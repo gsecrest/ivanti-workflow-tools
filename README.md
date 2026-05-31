@@ -84,6 +84,29 @@ See [workflow-query-app/README.md](workflow-query-app/README.md) for setup instr
 
 The web app is also available as a standalone repository: [github.com/gsecrest/workflow-query-app](https://github.com/gsecrest/workflow-query-app)
 
+### Windows Deployment (no terminal required)
+
+To run the web app in the background on Windows without keeping a terminal open, use the included `setup-windows.bat` script. It installs PM2, builds the app for production, and configures it to start automatically on Windows boot.
+
+**Prerequisites:**
+- [Node.js](https://nodejs.org) installed
+- `.env.local` file created in the `workflow-query-app/` root with your database credentials
+
+**Steps:**
+1. Clone the repository to the Windows machine
+2. Create `workflow-query-app/.env.local` with your database credentials
+3. Right-click `workflow-query-app/setup-windows.bat` and select **Run as Administrator**
+
+The app will be available at [http://localhost:3000](http://localhost:3000) and will start automatically after every reboot.
+
+**Useful PM2 commands:**
+```bash
+pm2 status                         # check if the app is running
+pm2 logs workflow-query-app        # view app logs
+pm2 restart workflow-query-app     # restart the app
+pm2 stop workflow-query-app        # stop the app
+```
+
 ---
 
 ## Requirements
