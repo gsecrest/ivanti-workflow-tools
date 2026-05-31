@@ -34,7 +34,7 @@ if %errorlevel% neq 0 (echo ERROR: PM2 save failed & pause & exit /b 1)
 
 echo.
 echo Step 7: Configuring PM2 to start on Windows boot...
-call pm2-windows-startup install
+call npx pm2-windows-startup install
 if %errorlevel% neq 0 (echo ERROR: Startup config failed & pause & exit /b 1)
 
 echo.
