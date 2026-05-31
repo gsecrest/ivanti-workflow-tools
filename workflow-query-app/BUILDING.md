@@ -256,6 +256,7 @@ const [rows, setRows]                 = useState<Row[]>([]);
 const [loading, setLoading]           = useState(false);
 const [hasQueried, setHasQueried]     = useState(false);
 const [error, setError]               = useState("");
+const [copied, setCopied]             = useState(false);
 ```
 
 - `hasQueried` prevents showing the results panel before the first query runs.
@@ -313,6 +314,19 @@ The results section only renders when `hasQueried && !error`. The "No results fo
 )}
 ```
 
+### Input styling
+
+Filter labels use `text-gray-800` and all inputs/selects use `text-gray-900` for readable contrast against the white card background. The Team Name select also has `disabled:text-gray-400` so it visually dims while teams are loading.
+
+```tsx
+<label className="block text-xs font-semibold text-gray-800 uppercase tracking-wide mb-1">
+  Workflow Name
+</label>
+<input
+  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 ..."
+/>
+```
+
 ### Block type badge helper
 
 `BlockTypeBadge` maps known block types to colors; anything unrecognised gets a neutral grey:
@@ -329,6 +343,65 @@ function BlockTypeBadge({ type }: { type: string }) {
 ```
 
 Offering Status renders as plain text (no badge) since the values vary and don't map cleanly to a fixed color set.
+
+### CSV export
+
+An **Export CSV** button appears in the results header whenever there are rows. It is entirely client-side — no package needed.
+
+```tsx
+function exportCsv() {
+  const headers = ["Workflow Name", "Version", "Offering Status", "Block Title", "Block Type", "Team Name"];
+  const escape = (v: string) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const lines = [
+    headers.map(escape).join(","),
+    ...rows.map((r) =>
+      [r.WorkflowName, r.DefVersion, r.RequestOfferingStatus, r.BlockTitle, r.BlockType, r.TeamName]
+        .map(escape).join(",")
+    ),
+  ];
+  const blob = new Blob([lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "workflow-results.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+```
+
+**Key points:**
+- `escape()` wraps every value in double quotes and escapes any internal quotes (`"` → `""`), handling commas and special characters in workflow names safely.
+- `\r\n` line endings are used — required by the CSV spec and expected by Excel.
+- `URL.createObjectURL` / `revokeObjectURL` creates a temporary download link and immediately cleans it up.
+- Both buttons only render when `rows.length > 0`, so they never appear on an empty result set.
+
+### Copy to Clipboard
+
+The **Copy to Clipboard** button copies results as tab-separated values (TSV), which pastes into Excel with columns already aligned — no import wizard needed.
+
+```tsx
+const [copied, setCopied] = useState(false);
+
+function copyToClipboard() {
+  const headers = ["Workflow Name", "Version", "Offering Status", "Block Title", "Block Type", "Team Name"];
+  const lines = [
+    headers.join("\t"),
+    ...rows.map((r) =>
+      [r.WorkflowName, r.DefVersion, r.RequestOfferingStatus, r.BlockTitle, r.BlockType, r.TeamName].join("\t")
+    ),
+  ];
+  navigator.clipboard.writeText(lines.join("\n")).then(() => {
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  });
+}
+```
+
+The button label switches to **"Copied!"** for 2 seconds via the `copied` state, then resets — giving the user clear confirmation without a modal or toast.
+
+**Key points:**
+- TSV (tab-separated) rather than CSV is used here because `navigator.clipboard.writeText` writes plain text. Tabs are the delimiter Excel recognises when pasting plain text into a sheet.
+- `setTimeout` resets `copied` after 2 seconds so the button is ready to use again.
 
 ---
 

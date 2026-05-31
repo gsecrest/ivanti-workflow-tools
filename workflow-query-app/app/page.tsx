@@ -35,6 +35,40 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [hasQueried, setHasQueried] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  function copyToClipboard() {
+    const headers = ["Workflow Name", "Version", "Offering Status", "Block Title", "Block Type", "Team Name"];
+    const lines = [
+      headers.join("\t"),
+      ...rows.map((r) =>
+        [r.WorkflowName, r.DefVersion, r.RequestOfferingStatus, r.BlockTitle, r.BlockType, r.TeamName].join("\t")
+      ),
+    ];
+    navigator.clipboard.writeText(lines.join("\n")).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  function exportCsv() {
+    const headers = ["Workflow Name", "Version", "Offering Status", "Block Title", "Block Type", "Team Name"];
+    const escape = (v: string) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const lines = [
+      headers.map(escape).join(","),
+      ...rows.map((r) =>
+        [r.WorkflowName, r.DefVersion, r.RequestOfferingStatus, r.BlockTitle, r.BlockType, r.TeamName]
+          .map(escape).join(",")
+      ),
+    ];
+    const blob = new Blob([lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "workflow-results.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   async function runQuery() {
     setLoading(true);
@@ -178,9 +212,27 @@ export default function Home() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
               <span className="text-sm font-semibold text-gray-700">Results</span>
-              <span className="text-xs text-gray-400">
-                {rows.length} row{rows.length !== 1 ? "s" : ""}
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-gray-400">
+                  {rows.length} row{rows.length !== 1 ? "s" : ""}
+                </span>
+                {rows.length > 0 && (
+                  <>
+                    <button
+                      onClick={copyToClipboard}
+                      className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors"
+                    >
+                      {copied ? "Copied!" : "Copy to Clipboard"}
+                    </button>
+                    <button
+                      onClick={exportCsv}
+                      className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors"
+                    >
+                      Export CSV
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
 
             {rows.length === 0 && !loading ? (

@@ -4,7 +4,7 @@ A Next.js app for finding which team owns a block in an Ivanti workflow. Queries
 
 ## What it does
 
-Searches across workflow definitions and returns rows showing:
+Searches across workflow definitions and returns matching blocks with their team assignments. Results can be exported to CSV directly from the results table.
 
 | Column | Description |
 |---|---|
@@ -15,7 +15,7 @@ Searches across workflow definitions and returns rows showing:
 | Block Type | `task`, `advancedtask`, or `update` |
 | Team Name | Team assigned to the block |
 
-Filters are optional — leaving any field blank searches across all values.
+Filters are optional — leaving any field blank searches across all values. When results are returned, **Copy to Clipboard** and **Export CSV** buttons appear in the results header. The clipboard copy uses tab-separated values so it pastes directly into Excel with columns aligned.
 
 ## Setup
 
