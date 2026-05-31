@@ -54,7 +54,7 @@ Identifies which teams are assigned within Ivanti workflow blocks. Supports filt
 4. Joins to `ServiceReqFulfillmentPlan` → `FusionLink` → `ServiceReqTemplate` to get the offering status
 5. UNIONs both block paths and returns results sorted by workflow, block type, and block title
 
-Full technical documentation is in `SQL/FindTeamByBlockTypeAndWorkflow_v5_Documentation.docx`.
+Full technical documentation is in `SQL/FindTeamByBlockTypeAndWorkflow_v5_Documentation.docx`. For a complete guide to all SQL scripts in this repo, see [SQL/README.md](SQL/README.md).
 
 ---
 
