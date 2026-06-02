@@ -7,6 +7,8 @@ const config: sql.config = {
   user: process.env.DB_USER!,
   password: dbPassword,
   port: parseInt(process.env.DB_PORT || "1433"),
+  requestTimeout: 60000,
+  connectionTimeout: 30000,
   options: {
     encrypt: true,
     trustServerCertificate: true,

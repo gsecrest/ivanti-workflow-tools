@@ -3,6 +3,25 @@ cd /d "%~dp0"
 echo === Workflow Query App - Windows Setup ===
 echo.
 
+echo Checking prerequisites...
+if not exist ".env.local" (
+    echo ERROR: .env.local not found!
+    echo.
+    echo Please create a .env.local file in this folder with your database credentials:
+    echo.
+    echo   DB_SERVER=your-sql-server
+    echo   DB_DATABASE=your-database
+    echo   DB_USER=your-username
+    echo   DB_PASSWORD=your-password
+    echo   DB_PORT=1433
+    echo.
+    echo See README.md for details.
+    pause
+    exit /b 1
+)
+echo   .env.local found.
+echo.
+
 echo Step 1: Installing dependencies...
 call npm install
 if %errorlevel% neq 0 (echo ERROR: npm install failed & pause & exit /b 1)
@@ -43,9 +62,9 @@ echo App is running at http://localhost:3000
 echo It will restart automatically if it crashes and start on Windows boot.
 echo.
 echo Useful PM2 commands:
-echo   pm2 status              - check if app is running
-echo   pm2 logs workflow-query-app  - view app logs
-echo   pm2 restart workflow-query-app - restart the app
-echo   pm2 stop workflow-query-app    - stop the app
+echo   pm2 status                         - check if app is running
+echo   pm2 logs workflow-query-app        - view app logs
+echo   pm2 restart workflow-query-app     - restart the app
+echo   pm2 stop workflow-query-app        - stop the app
 echo.
 pause

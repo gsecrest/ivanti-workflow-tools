@@ -1,0 +1,29 @@
+TeamName,WorkflowName,BlockTitle,BlockType
+"$(GetSRPValue(RecId, 'OwnerTeam'))",Database Request for Information XXX Request form,Database Request for Information,advancedtask
+"$(GetSRPValue(RecId, 'PurchaseNotFnd_Task_SelectTeam'))",Purchase Hardware Not Found Request form,Branch 2 - Task 3a - Receive hardware from Asset_Room,advancedtask
+"$(GetSRPValue(RecId, 'PurchaseNotFnd_Task_SelectTeam'))",Purchase Hardware Not Found_v1 Request form,Branch 2 - Task 3a - Receive hardware from Asset_Room,advancedtask
+"$(GetSRPValue(RecId, 'PurchaseNotFnd_Task_SelectTeam'))",Purchase Hardware Not Found_v2backup Request form,Branch 2 - Task 3a - Receive hardware from Asset_Room,advancedtask
+"$(if GetSRPValue(RecId,  \",Employee Relations Investigative Services Form - Original Request form,ERIS Task,advancedtask
+"$(if GetSRPValue(RecId,  \",Employee Relations Investigative Services Form Request Form,ERIS Task,advancedtask
+Asset Buyer,IT Order for Accessories - Backup 10172025 Request form,Create Peripheral Order,advancedtask
+Asset Buyer,Network Device Ordering Request form,Team Asset Buyer Review,advancedtask
+Asset Buyer,Order Accessories for Home Office Only Request form,Create Peripheral Order,advancedtask
+Asset Management,Create New Hardware CI Request form,Review New Product to be created,advancedtask
+Asset Room,IT Order for Accessories - Backup 10172025 Request form,Receive Peripheral Order,advancedtask
+Asset Room,Order Accessories for Home Office Only Request form,Receive Peripheral Order,advancedtask
+Connectivity - Asset Management,Request Network RMA Request form,Connectivity - Asset Management,advancedtask
+Connectivity - Asset Management,Request Network RMA_v1backup Request form,Connectivity - Asset Management,advancedtask
+Connectivity - Engineering,Request Network RMA Request form,Connectivity Integration Execution,advancedtask
+Connectivity - Integration and Execution,Request Network RMA Request form,Connectivity - Integration Execution,advancedtask
+Cyber Defense Center,Active Directory Services xxx Request form,Fulfill Active Directory Services Request,advancedtask
+ERI_Legal,Employee Relations Intake - Original Request form,ERI Legal ERI Task,advancedtask
+ERI_Legal,Employee Relations Intake Request Form,ERI Legal ERI Task,advancedtask
+ERI_Manager,Employee Relations Intake Request Form,ERI Mgr ERI Task,advancedtask
+Field IT Integration and Projects,Request Network RMA Request form,Connectivity Integration Execution,advancedtask
+M365,Teams Federation Request Request form,Revoke Teams Federation,advancedtask
+M365,Teams Federation Request Request form,Revoke Teams Federation – Renewal Rejected,advancedtask
+Service Management,Create New Hardware CI - JC 03042026 backup Request form,Review New Product to be created,advancedtask
+Service Management,Create New Hardware CI Request form,Review New Product to be created,advancedtask
+Service Management,Create New Hardware CI_v3backup Request form,Review New Product to be created,advancedtask
+Service Management,Request Network RMA Request form,Service Mgt Task,advancedtask
+Service Management,Request Network RMA_v1backup Request form,Service Mgt Task,advancedtask
