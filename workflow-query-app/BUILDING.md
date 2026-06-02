@@ -184,6 +184,8 @@ const config: sql.config = {
   user: process.env.DB_USER!,
   password: dbPassword,
   port: parseInt(process.env.DB_PORT || "1433"),
+  requestTimeout: 60000,
+  connectionTimeout: 30000,
   options: {
     encrypt: true,
     trustServerCertificate: true,
@@ -198,6 +200,8 @@ export const poolConnect = pool.connect();
 - `new sql.ConnectionPool(config)` creates the pool at module load time but does not connect yet.
 - `pool.connect()` returns a promise that resolves when the initial connection is established. Each route handler `await`s `poolConnect` before running a query.
 - Never call `pool.close()` in route handlers — doing so tears down the TCP connection and forces a reconnect on every request, which adds significant latency.
+- `requestTimeout` is set to 60 seconds (default is 15s). The XML shredding query can take longer than 15s on large datasets — raising this prevents spurious timeout errors.
+- `connectionTimeout` is set to 30 seconds (default is 15s) to allow more time to establish the initial TCP connection to SQL Server.
 
 ---
 

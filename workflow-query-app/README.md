@@ -199,6 +199,7 @@ Run `pm2 logs workflow-query-app --lines 50` to see the crash output, then check
 | `SyntaxError: missing ) after argument list` in `node_modules/.bin/next` | PM2 tried to run the Unix bash wrapper instead of a Node.js file | Fixed in `ecosystem.config.js` — `script` now points to `node_modules/next/dist/bin/next` |
 | DB connection errors or missing env vars | `.env.local` is missing or credentials are wrong | Create `.env.local` in the project root with the correct values (see Setup above) |
 | `Login failed for user` | `DB_PASSWORD_ENCRYPTED` key name wrong in `.env.local` | Ensure the key is `DB_PASSWORD_ENCRYPTED`, not `DB_PASSWORD` |
+| `Timeout: Request failed to complete in 15000ms` | Default mssql request timeout too short for large datasets | Already fixed in `lib/db.ts` — `requestTimeout` is set to 60s |
 
 ### PM2 config changes not taking effect
 
