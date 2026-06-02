@@ -17,8 +17,8 @@ const STATUSES = ["", "Published", "Design"];
 export default function Home() {
   const [workflowName, setWorkflowName] = useState("");
   const [blockType, setBlockType] = useState("");
-  const [teamName, setTeamName] = useState("Risk Management Support");
-  const [status, setStatus] = useState("Published");
+  const [teamName, setTeamName] = useState("");
+  const [status, setStatus] = useState("");
   const [teams, setTeams] = useState<string[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(true);
 
@@ -37,6 +37,8 @@ export default function Home() {
   const [hasQueried, setHasQueried] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  const exportHref = `/api/export/workflow-results.csv?${new URLSearchParams({ workflowName, blockType, teamName, status }).toString()}`;
+
   function copyToClipboard() {
     const headers = ["Workflow Name", "Version", "Offering Status", "Block Title", "Block Type", "Team Name"];
     const lines = [
@@ -49,25 +51,6 @@ export default function Home() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
-  }
-
-  function exportCsv() {
-    const headers = ["Workflow Name", "Version", "Offering Status", "Block Title", "Block Type", "Team Name"];
-    const escape = (v: string) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const lines = [
-      headers.map(escape).join(","),
-      ...rows.map((r) =>
-        [r.WorkflowName, r.DefVersion, r.RequestOfferingStatus, r.BlockTitle, r.BlockType, r.TeamName]
-          .map(escape).join(",")
-      ),
-    ];
-    const blob = new Blob([lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "workflow-results.csv";
-    a.click();
-    URL.revokeObjectURL(url);
   }
 
   async function runQuery() {
@@ -224,12 +207,12 @@ export default function Home() {
                     >
                       {copied ? "Copied!" : "Copy to Clipboard"}
                     </button>
-                    <button
-                      onClick={exportCsv}
+                    <a
+                      href={exportHref}
                       className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors"
                     >
                       Export CSV
-                    </button>
+                    </a>
                   </>
                 )}
               </div>
