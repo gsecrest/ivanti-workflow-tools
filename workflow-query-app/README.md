@@ -40,9 +40,11 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Encrypting the Database Password (Windows DPAPI)
 
-For production deployments, use Windows DPAPI to encrypt the password so it is not stored in plaintext. The encrypted value is tied to your Windows user account — it cannot be decrypted on any other machine or user account.
+For production deployments on Windows, the database password should be encrypted with Windows DPAPI so it is not stored in plaintext. The encrypted value is tied to your Windows user account — it cannot be decrypted on any other machine or user account.
 
-**Step 1 — Encrypt your password** (run in PowerShell):
+**If you are using `setup-windows.bat`:** encryption is handled automatically. Just put `DB_PASSWORD=your-plaintext-password` in `.env.local` and run the script — it will encrypt the value, replace the line with `DB_PASSWORD_ENCRYPTED=<encrypted>`, and remove the plaintext before building the app.
+
+**To encrypt manually** (e.g. to re-encrypt on a new machine, or if not using the `.bat`), run this in PowerShell on the Windows machine that will run the app:
 
 ```powershell
 Add-Type -AssemblyName System.Security
@@ -55,9 +57,7 @@ Add-Type -AssemblyName System.Security
 )
 ```
 
-Copy the output.
-
-**Step 2 — Update `.env.local`** — replace `DB_PASSWORD` with `DB_PASSWORD_ENCRYPTED`:
+Copy the output and update `.env.local`:
 
 ```
 DB_SERVER=your-sql-server
@@ -65,15 +65,6 @@ DB_DATABASE=your-database
 DB_USER=your-username
 DB_PASSWORD_ENCRYPTED=<paste encrypted value here>
 DB_PORT=1433
-```
-
-**Step 3 — Rebuild and restart:**
-
-```bash
-npm run build
-pm2 delete workflow-query-app
-pm2 start ecosystem.config.js
-pm2 save
 ```
 
 The app decrypts the password at startup via `lib/db-password.ts` using `spawnSync` and PowerShell DPAPI. If `DB_PASSWORD_ENCRYPTED` is not set, it falls back to `DB_PASSWORD` for local dev.
@@ -84,11 +75,11 @@ To run the app in the background on Windows without keeping a terminal open, use
 
 **Prerequisites:**
 - [Node.js](https://nodejs.org) installed
-- `.env.local` file created in the project root (see Setup above) — **the script will not proceed without it**
+- `.env.local` file created in the project root with `DB_PASSWORD=your-plaintext-password` — **the script will not proceed without it, and will encrypt the password automatically before building**
 
 **Steps:**
 1. Clone the repository to the Windows machine
-2. Create `.env.local` with your database credentials
+2. Create `.env.local` with your database credentials (use `DB_PASSWORD=` — the script encrypts it)
 3. Right-click `setup-windows.bat` and select **Run as Administrator**
 
 The app will be available at [http://localhost:3000](http://localhost:3000) and will start automatically after every reboot.

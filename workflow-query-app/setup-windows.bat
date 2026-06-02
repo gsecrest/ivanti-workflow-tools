@@ -22,6 +22,24 @@ if not exist ".env.local" (
 echo   .env.local found.
 echo.
 
+:: Encrypt plaintext DB_PASSWORD with Windows DPAPI if not already encrypted
+findstr /i "^DB_PASSWORD_ENCRYPTED=" .env.local >nul 2>&1
+if %errorlevel% equ 0 (
+    echo Password is already encrypted. Skipping encryption.
+) else (
+    findstr /i "^DB_PASSWORD=" .env.local >nul 2>&1
+    if %errorlevel% neq 0 (
+        echo ERROR: No DB_PASSWORD or DB_PASSWORD_ENCRYPTED found in .env.local
+        echo Please add your database password to .env.local before running this script.
+        pause
+        exit /b 1
+    )
+    echo Encrypting DB_PASSWORD with Windows DPAPI...
+    powershell -NonInteractive -ExecutionPolicy Bypass -Command "$f='.env.local';$l=Get-Content $f;$m=$l|Where-Object{$_ -match '^DB_PASSWORD=(.+)'};if(-not $m){Write-Host 'ERROR: Could not read DB_PASSWORD';exit 1};$pw=($m -replace '^DB_PASSWORD=','');Add-Type -AssemblyName System.Security;$b=[System.Text.Encoding]::UTF8.GetBytes($pw);$e=[System.Convert]::ToBase64String([System.Security.Cryptography.ProtectedData]::Protect($b,$null,[System.Security.Cryptography.DataProtectionScope]::CurrentUser));$n=$l|ForEach-Object{if($_ -match '^DB_PASSWORD='){'DB_PASSWORD_ENCRYPTED='+$e}else{$_}};Set-Content $f $n;Write-Host 'Password encrypted and .env.local updated.'"
+    if %errorlevel% neq 0 (echo ERROR: Password encryption failed & pause & exit /b 1)
+)
+echo.
+
 echo Step 1: Installing dependencies...
 call npm install
 if %errorlevel% neq 0 (echo ERROR: npm install failed & pause & exit /b 1)

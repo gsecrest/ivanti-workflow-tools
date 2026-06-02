@@ -54,7 +54,7 @@ DB_PASSWORD=your-password
 DB_PORT=1433
 ```
 
-For production deployments on Windows, use `DB_PASSWORD_ENCRYPTED` instead of `DB_PASSWORD` — see the DPAPI utility step below.
+For local dev, use `DB_PASSWORD`. For production on Windows, `setup-windows.bat` automatically encrypts `DB_PASSWORD` with DPAPI and replaces it with `DB_PASSWORD_ENCRYPTED` in `.env.local` before building — you do not need to encrypt it manually.
 
 These variables are read at runtime by the API routes via `lib/db-password.ts`.
 
