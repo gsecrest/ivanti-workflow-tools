@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 type Row = {
   WorkflowName: string;
@@ -139,28 +139,13 @@ export default function Home() {
               <label className="block text-xs font-semibold text-gray-800 uppercase tracking-wide mb-1">
                 Team / Group
               </label>
-              <select
+              <TeamCombobox
+                teams={teams}
+                approvalGroups={approvalGroups}
                 value={teamName}
-                onChange={(e) => setTeamName(e.target.value)}
+                onChange={setTeamName}
                 disabled={teamsLoading}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:text-gray-400"
-              >
-                <option value="">All teams</option>
-                {teams.length > 0 && (
-                  <optgroup label="Service Desk Teams">
-                    {teams.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </optgroup>
-                )}
-                {approvalGroups.length > 0 && (
-                  <optgroup label="Approval Groups">
-                    {approvalGroups.map((g) => (
-                      <option key={g} value={g}>{g}</option>
-                    ))}
-                  </optgroup>
-                )}
-              </select>
+              />
             </div>
 
             <div>
@@ -276,6 +261,123 @@ export default function Home() {
         )}
       </div>
     </main>
+  );
+}
+
+function TeamCombobox({
+  teams,
+  approvalGroups,
+  value,
+  onChange,
+  disabled,
+}: {
+  teams: string[];
+  approvalGroups: string[];
+  value: string;
+  onChange: (v: string) => void;
+  disabled: boolean;
+}) {
+  const [query, setQuery] = useState(value);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setQuery(value); }, [value]);
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const q = query.toLowerCase();
+  const filteredTeams  = teams.filter(t => !q || t.toLowerCase().includes(q));
+  const filteredGroups = approvalGroups.filter(g => !q || g.toLowerCase().includes(q));
+  const hasResults = filteredTeams.length > 0 || filteredGroups.length > 0;
+
+  function select(val: string) {
+    onChange(val);
+    setQuery(val);
+    setOpen(false);
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <div className="relative">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); onChange(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          placeholder="All teams"
+          disabled={disabled}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-8 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:text-gray-400"
+        />
+        {query ? (
+          <button
+            onMouseDown={(e) => { e.preventDefault(); select(""); }}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs leading-none"
+          >
+            ✕
+          </button>
+        ) : (
+          <svg
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
+            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        )}
+      </div>
+      {open && (
+        <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+          {!query && (
+            <div onMouseDown={() => select("")} className="px-3 py-2 text-sm text-gray-400 cursor-pointer hover:bg-gray-50">
+              All teams
+            </div>
+          )}
+          {hasResults ? (
+            <>
+              {filteredTeams.length > 0 && (
+                <>
+                  <div className="px-3 py-1 text-xs font-semibold text-gray-400 uppercase tracking-wide bg-gray-50 sticky top-0">
+                    Service Desk Teams
+                  </div>
+                  {filteredTeams.map((t) => (
+                    <div
+                      key={t}
+                      onMouseDown={() => select(t)}
+                      className={`px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 ${value === t ? "text-blue-700 font-medium" : "text-gray-900"}`}
+                    >
+                      {t}
+                    </div>
+                  ))}
+                </>
+              )}
+              {filteredGroups.length > 0 && (
+                <>
+                  <div className="px-3 py-1 text-xs font-semibold text-gray-400 uppercase tracking-wide bg-gray-50 sticky top-0">
+                    Approval Groups
+                  </div>
+                  {filteredGroups.map((g) => (
+                    <div
+                      key={g}
+                      onMouseDown={() => select(g)}
+                      className={`px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 ${value === g ? "text-blue-700 font-medium" : "text-gray-900"}`}
+                    >
+                      {g}
+                    </div>
+                  ))}
+                </>
+              )}
+            </>
+          ) : (
+            <div className="px-3 py-2 text-sm text-gray-400">No matches</div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
