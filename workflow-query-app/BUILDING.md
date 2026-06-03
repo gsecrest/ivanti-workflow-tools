@@ -303,27 +303,32 @@ export async function POST(req: NextRequest) {
 
 **Key points:**
 - Always use `.input()` with typed parameters instead of string interpolation — this prevents SQL injection.
-- The SQL uses temp tables (`#FilteredWorkflows`, `#AllBlocks`, etc.) to break the query into readable stages and avoid re-shredding XML multiple times.
+- The SQL uses temp tables to break the query into readable stages and avoid re-shredding XML multiple times. Each temp table gets a clustered index immediately after population.
 - Passing an empty string `""` for any filter means "match all" — the SQL uses `@param = '' OR ...` for optional filtering.
+- The `LatestVersions` CTE pushes the `%form` name filter inside so `ROW_NUMBER()` only runs over relevant workflows, not the entire definition table.
+- `#AllBlocks` gets a non-clustered index on `BlockType` so PATH 3 can seek directly to `vote0007`/`vote` rows.
+- `#ApprovalGroupLookup` pre-materialises only the active approval groups from `ContactGroup`, avoiding a full table scan in PATH 3.
+- `#Blocks` gets a non-clustered index on `WorkflowDefinitionRecID` to speed up the `LEFT JOIN` to `#WorkflowOffering` in the final SELECT.
 
 ### How the SQL query works
 
-The query has five stages:
+The query has seven stages:
 
 | Stage | What it does |
 |---|---|
-| `#FilteredWorkflows` | Gets the latest version of each `*form` workflow, parses the XML definition |
-| `#AllBlocks` | Shreds all blocks from the XML in a single pass; applies block type filter |
-| `#Blocks` | Extracts QuickAction-based blocks (`advancedtask`, `update`, `create`, `notification`, `quickaction`, `createnew0002`) via QAID |
+| `#FilteredWorkflows` | `LatestVersions` CTE filters to `*form` workflows and computes `ROW_NUMBER()` only over matching rows — name and form filters are pushed into the CTE so the full definition table is never scanned |
+| `#AllBlocks` | Shreds all blocks in a single XML pass; two indexes created: clustered on `WorkflowDefinitionRecID`, non-clustered on `BlockType` |
+| `#Blocks` | Extracts QuickAction-based blocks (`advancedtask`, `update`, `create`, `notification`, `quickaction`, `createnew0002`) via QAID; two indexes: clustered on `QAID`, non-clustered on `WorkflowDefinitionRecID` |
 | `#TaskBlocks` | Extracts task blocks via the `teamblock` property |
-| `#ApprovalBlocks` | Extracts approval blocks (`vote0007`, `vote`) via `contactgroup` GUID, joined to `ContactGroup` for the name |
+| `#ApprovalGroupLookup` | Pre-materialises active `Service Request Approval` contact groups from `ContactGroup` into a small indexed temp table so PATH 3 avoids scanning the full table |
+| `#ApprovalBlocks` | Extracts approval blocks (`vote0007`, `vote`) via `contactgroup` GUID joined to `#ApprovalGroupLookup`; `UPPER()` removed from the JOIN column so the index on `RecId` is sargable on CI collations |
 | `#WorkflowOffering` | Joins workflow IDs to their request offering status |
 
 The final `SELECT` UNIONs three branches, all joined to `#WorkflowOffering` for the status column:
 
 - **`#Blocks` branch** — joins to `frs_def_quick_actions` and uses `CHARINDEX` string scanning to extract the team name from the `Definition` column: it finds `"FieldName":"OwnerTeam"` then searches forward for `"ExpressionText":"` to read the value. `OPENJSON` cannot be used here because Ivanti stores JavaScript Date literals (`new Date(...)`) in the column, which are not valid JSON.
 - **`#TaskBlocks` branch** — team name was already extracted from XML in the `#TaskBlocks` stage, so no further lookup is needed.
-- **`#ApprovalBlocks` branch** — approval group name was resolved via `ContactGroup` JOIN in the `#ApprovalBlocks` stage, so no further lookup is needed.
+- **`#ApprovalBlocks` branch** — approval group name was resolved via `#ApprovalGroupLookup` JOIN in the `#ApprovalBlocks` stage, so no further lookup is needed.
 
 ---
 

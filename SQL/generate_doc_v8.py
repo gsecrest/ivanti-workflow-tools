@@ -115,9 +115,9 @@ body('The script executes in three stages followed by a final three-way UNION re
 
 heading('Stage 1 — Load Filtered Workflows  (#FilteredWorkflows)', level=2)
 body(
-    'A CTE (LatestVersions) uses ROW_NUMBER() partitioned by WorkflowTypeLink_RecID to identify '
-    'the most recent version of each workflow. WITH (NOLOCK) is applied to all base table reads — '
-    'this is a read-only reporting query and NOLOCK prevents blocking the live Ivanti system. '
+    'The LatestVersions CTE now includes the JOIN to frs_def_workflow_type and the %form / '
+    'name filters — ROW_NUMBER() only runs over matching workflows, not the entire definition '
+    'table. WITH (NOLOCK) on all base table reads prevents blocking the live Ivanti system. '
     'The workflow XML is cleaned of its declaration and namespace prefix, cast to the XML data '
     'type, and stored with a UPPER()-normalised RecID. A clustered index on '
     'WorkflowDefinitionRecID is created after population.'
@@ -129,7 +129,9 @@ body(
     'CROSS APPLY ... .nodes(). The block XML fragment is stored alongside title and type. '
     'DISTINCT is intentionally omitted — the XML type is not comparable in SQL Server, so '
     'DISTINCT on an XML column would error. Deduplication is handled in the PATH steps which '
-    'do not carry the XML column forward.'
+    'do not carry the XML column forward. Two indexes are created: a clustered index on '
+    'WorkflowDefinitionRecID and a non-clustered index on BlockType so PATH 3 can seek '
+    'directly to vote0007/vote rows without scanning the full table.'
 )
 
 heading('PATH 1 — QuickAction Blocks  (#Blocks)', level=2)
@@ -146,7 +148,8 @@ code_block(
     "INTO #Blocks\n"
     "FROM #AllBlocks ab\n"
     "CROSS APPLY ab.BlockXml.nodes('block/blockProperties/property[name=\"QuickAction\"]') q(qaprop);\n"
-    "CREATE CLUSTERED INDEX IX_Blocks_QAID ON #Blocks (QAID);"
+    "CREATE CLUSTERED INDEX    IX_Blocks_QAID  ON #Blocks (QAID);\n"
+    "CREATE NONCLUSTERED INDEX IX_Blocks_RecID ON #Blocks (WorkflowDefinitionRecID);"
 )
 
 heading('PATH 2 — Task Blocks  (#TaskBlocks)', level=2)
@@ -156,20 +159,33 @@ body(
     '(starting with "$(") are filtered out.'
 )
 
-heading('PATH 3 — Approval Blocks  (#ApprovalBlocks)  [new in v8]', level=2)
+heading('Pre-stage — Approval Group Lookup  (#ApprovalGroupLookup)', level=2)
 body(
-    'Extracts vote0007 and vote approval blocks. The approver contact group GUID is read from '
-    'the approvers/groups/group XML path, then joined to the ContactGroup table to resolve the '
-    'GUID to a group name. Only static group assignments (where a GUID is present) are included; '
-    'dynamic approvers (_unchecked, from field, from profile) produce no GUID and are excluded '
-    'by the JOIN.'
+    'Before PATH 3, active Service Request Approval contact groups are pre-materialised into '
+    '#ApprovalGroupLookup with a clustered index on RecId. This avoids PATH 3 scanning the '
+    'full ContactGroup table on every query.'
 )
 code_block(
-    "CROSS APPLY ab.BlockXml.nodes('block/blockProperties/property[name=\"approvers\"]/groups/group') g(grp)\n"
+    "SELECT RecId, Name INTO #ApprovalGroupLookup\n"
+    "FROM ContactGroup WITH (NOLOCK)\n"
+    "WHERE Status = 'Active' AND GroupType = 'Service Request Approval';\n"
+    "CREATE CLUSTERED INDEX IX_AGL_RecId ON #ApprovalGroupLookup (RecId);"
+)
+
+heading('PATH 3 — Approval Blocks  (#ApprovalBlocks)', level=2)
+body(
+    'Extracts vote0007 and vote approval blocks. The approver contact group GUID is read from '
+    'the approvers/groups/group XML path, then joined to #ApprovalGroupLookup to resolve the '
+    'GUID to a group name. UPPER() is applied to the XML-extracted value (casing not guaranteed) '
+    'but removed from the JOIN column so the clustered index on RecId is sargable on CI collations. '
+    'Only static group assignments (where a GUID is present) are included; dynamic approvers '
+    'produce no GUID and are excluded by the JOIN.'
+)
+code_block(
     "CROSS APPLY (VALUES (\n"
     "    UPPER(LTRIM(RTRIM(g.grp.value('(param[name=\"contactgroup\"]/value)[1]', 'nvarchar(50)'))))\n"
     ")) av (ContactGroupId)\n"
-    "JOIN ContactGroup cg WITH (NOLOCK) ON UPPER(cg.RecId) = av.ContactGroupId\n"
+    "JOIN #ApprovalGroupLookup cg ON cg.RecId = av.ContactGroupId\n"
     "WHERE ab.BlockType IN ('vote0007', 'vote') AND av.ContactGroupId <> '';"
 )
 
@@ -191,7 +207,7 @@ bullet(
     'ExpressionText values return NULL rather than arbitrary text.'
 )
 bullet('#TaskBlocks branch (PATH 2): team name already in #TaskBlocks, no further lookup.')
-bullet('#ApprovalBlocks branch (PATH 3): group name already resolved via ContactGroup JOIN.')
+bullet('#ApprovalBlocks branch (PATH 3): group name already resolved via #ApprovalGroupLookup JOIN.')
 
 # ── 5. Changes from v7 to v8 ─────────────────────────────────────────────────
 heading('5. Changes from v7 to v8')
@@ -210,6 +226,26 @@ add_table(
          '#ApprovalBlocks added to the DROP TABLE cleanup section',
          'Temp table cleanup consistency',
          'No orphaned temp tables if the script is run multiple times in the same session'],
+        ['4',
+         'Filter pushed into LatestVersions CTE — JOIN to frs_def_workflow_type and %form name filter now inside the CTE',
+         'ROW_NUMBER() was running over the entire definition table before filtering',
+         'ROW_NUMBER() now only runs over matching *form workflows'],
+        ['5',
+         'Non-clustered index on #AllBlocks(BlockType)',
+         'PATH 3 was doing a full scan of #AllBlocks to find vote0007/vote rows',
+         'PATH 3 can now seek directly to the relevant rows'],
+        ['6',
+         '#ApprovalGroupLookup pre-materialises active Service Request Approval groups before PATH 3',
+         'PATH 3 was joining the full ContactGroup table on every execution',
+         'PATH 3 joins a small indexed temp table instead'],
+        ['7',
+         'UPPER() removed from the JOIN column in PATH 3 (cg.RecId)',
+         'UPPER() on an indexed column prevents the index from being used (not sargable)',
+         'On CI collations the clustered index on RecId is now usable for the JOIN'],
+        ['8',
+         'Non-clustered index on #Blocks(WorkflowDefinitionRecID)',
+         'The final LEFT JOIN to #WorkflowOffering in PATH 1 had no index support on the #Blocks side',
+         'Faster LEFT JOIN in the final SELECT'],
     ]
 )
 

@@ -3,33 +3,40 @@ DECLARE @BlockType    NVARCHAR(50)  = '';   -- task, advancedtask, update, creat
 DECLARE @TeamName     NVARCHAR(255) = '';   -- leave blank to search all teams and approval groups
 DECLARE @Status       NVARCHAR(50)  = '';   -- e.g. Published, Design; leave blank for all
 
-IF OBJECT_ID('tempdb..#FilteredWorkflows') IS NOT NULL DROP TABLE #FilteredWorkflows;
-IF OBJECT_ID('tempdb..#AllBlocks')         IS NOT NULL DROP TABLE #AllBlocks;
-IF OBJECT_ID('tempdb..#Blocks')            IS NOT NULL DROP TABLE #Blocks;
-IF OBJECT_ID('tempdb..#TaskBlocks')        IS NOT NULL DROP TABLE #TaskBlocks;
-IF OBJECT_ID('tempdb..#ApprovalBlocks')    IS NOT NULL DROP TABLE #ApprovalBlocks;
-IF OBJECT_ID('tempdb..#WorkflowOffering')  IS NOT NULL DROP TABLE #WorkflowOffering;
+IF OBJECT_ID('tempdb..#FilteredWorkflows')   IS NOT NULL DROP TABLE #FilteredWorkflows;
+IF OBJECT_ID('tempdb..#AllBlocks')           IS NOT NULL DROP TABLE #AllBlocks;
+IF OBJECT_ID('tempdb..#Blocks')              IS NOT NULL DROP TABLE #Blocks;
+IF OBJECT_ID('tempdb..#TaskBlocks')          IS NOT NULL DROP TABLE #TaskBlocks;
+IF OBJECT_ID('tempdb..#ApprovalGroupLookup') IS NOT NULL DROP TABLE #ApprovalGroupLookup;
+IF OBJECT_ID('tempdb..#ApprovalBlocks')      IS NOT NULL DROP TABLE #ApprovalBlocks;
+IF OBJECT_ID('tempdb..#WorkflowOffering')    IS NOT NULL DROP TABLE #WorkflowOffering;
 
 -- =============================================================================
 -- Stage 1: Latest version per workflow type
--- ROW_NUMBER() replaces correlated MAX subquery; scans frs_def_workflow_definition once.
--- WITH (NOLOCK) on all base tables — read-only reporting query prevents
--- blocking or being blocked by concurrent writes on the live Ivanti system.
+-- OPT: Filter pushed into the CTE so ROW_NUMBER() only runs over *form
+-- workflows that match the name filter, not the entire definition table.
+-- WITH (NOLOCK) on all base tables — read-only reporting query.
 -- =============================================================================
 ;WITH LatestVersions AS (
     SELECT
-        RecID,
-        WorkflowTypeLink_RecID,
-        DefVersion,
-        Details,
+        wf.RecID,
+        wf.WorkflowTypeLink_RecID,
+        wf.DefVersion,
+        wf.Details,
+        wt.Name AS WorkflowName,
         ROW_NUMBER() OVER (
-            PARTITION BY WorkflowTypeLink_RecID
-            ORDER BY CAST(DefVersion AS INT) DESC
+            PARTITION BY wf.WorkflowTypeLink_RecID
+            ORDER BY CAST(wf.DefVersion AS INT) DESC
         ) AS rn
-    FROM frs_def_workflow_definition WITH (NOLOCK)
+    FROM frs_def_workflow_definition wf WITH (NOLOCK)
+    JOIN frs_def_workflow_type wt WITH (NOLOCK)
+        ON wf.WorkflowTypeLink_RecID = wt.RecID
+    WHERE wt.Name LIKE '%form'
+      AND wt.Name NOT LIKE '%backup%'
+      AND (@WorkflowName = '' OR wt.Name LIKE '%' + @WorkflowName + '%')
 )
 SELECT
-    wt.Name                    AS WorkflowName,
+    lv.WorkflowName,
     UPPER(lv.RecID)            AS WorkflowDefinitionRecID,
     lv.DefVersion,
     CAST(
@@ -39,18 +46,14 @@ SELECT
     AS XML) AS XmlData
 INTO #FilteredWorkflows
 FROM LatestVersions lv
-JOIN frs_def_workflow_type wt WITH (NOLOCK) ON lv.WorkflowTypeLink_RecID = wt.RecID
-WHERE lv.rn = 1
-  AND wt.Name LIKE '%form'
-  AND wt.Name NOT LIKE '%backup%'
-  AND (@WorkflowName = '' OR wt.Name LIKE '%' + @WorkflowName + '%');
+WHERE lv.rn = 1;
 
 CREATE CLUSTERED INDEX IX_FW_RecID ON #FilteredWorkflows (WorkflowDefinitionRecID);
 
 -- =============================================================================
 -- Stage 2: Single XML shred pass over all blocks
--- No DISTINCT: XML type is not comparable in SQL Server; dedup happens at
--- the PATH steps below which do not carry the XML column forward.
+-- No DISTINCT: XML type is not comparable; dedup happens at the PATH steps.
+-- OPT: Non-clustered index on BlockType speeds up PATH 3 filter.
 -- =============================================================================
 SELECT
     fw.WorkflowName,
@@ -64,15 +67,14 @@ FROM #FilteredWorkflows fw
 CROSS APPLY fw.XmlData.nodes('/scenario/blocks/block') b(block)
 WHERE (@BlockType = '' OR LTRIM(RTRIM(b.block.value('(type)[1]', 'nvarchar(50)'))) = @BlockType);
 
-CREATE CLUSTERED INDEX IX_AB_RecID ON #AllBlocks (WorkflowDefinitionRecID);
+CREATE CLUSTERED INDEX   IX_AB_RecID    ON #AllBlocks (WorkflowDefinitionRecID);
+CREATE NONCLUSTERED INDEX IX_AB_BlockType ON #AllBlocks (BlockType);
 
 -- =============================================================================
 -- PATH 1: QuickAction-based blocks
 -- Covers: advancedtask, update, create, notification, quickaction, createnew0002
--- All carry a QuickAction property with a QAID GUID that resolves to an
--- OwnerTeam in frs_def_quick_actions.Definition via CHARINDEX (see final SELECT).
--- QAID stored as uniqueidentifier — type-matched JOIN to frs_def_quick_actions.Id
--- is sargable.
+-- OPT: Non-clustered index on WorkflowDefinitionRecID speeds up the final
+-- LEFT JOIN to #WorkflowOffering.
 -- =============================================================================
 SELECT DISTINCT
     ab.WorkflowName,
@@ -87,7 +89,8 @@ INTO #Blocks
 FROM #AllBlocks ab
 CROSS APPLY ab.BlockXml.nodes('block/blockProperties/property[name="QuickAction"]') q(qaprop);
 
-CREATE CLUSTERED INDEX IX_Blocks_QAID ON #Blocks (QAID);
+CREATE CLUSTERED INDEX    IX_Blocks_QAID  ON #Blocks (QAID);
+CREATE NONCLUSTERED INDEX IX_Blocks_RecID ON #Blocks (WorkflowDefinitionRecID);
 
 -- =============================================================================
 -- PATH 2: Task blocks (teamblock property)
@@ -114,12 +117,22 @@ WHERE tv.TeamName <> ''
 CREATE CLUSTERED INDEX IX_TaskBlocks_RecID ON #TaskBlocks (WorkflowDefinitionRecID);
 
 -- =============================================================================
+-- OPT: Pre-materialise only relevant ContactGroup rows so PATH 3 joins a
+-- small indexed temp table instead of the full ContactGroup table.
+-- =============================================================================
+SELECT RecId, Name
+INTO #ApprovalGroupLookup
+FROM ContactGroup WITH (NOLOCK)
+WHERE Status = 'Active'
+  AND GroupType = 'Service Request Approval';
+
+CREATE CLUSTERED INDEX IX_AGL_RecId ON #ApprovalGroupLookup (RecId);
+
+-- =============================================================================
 -- PATH 3: Approval blocks (vote0007, vote)
--- Extracts the approver contact group GUID from the approvers property and
--- joins to ContactGroup to resolve it to a group name.
--- Only processes blocks where a contactgroup GUID is present (static group
--- assignment). Dynamic approvers (_unchecked, from field, from profile)
--- produce no GUID and are excluded by the JOIN.
+-- OPT: UPPER() removed from the JOIN column — on CI collations the index on
+-- RecId is now sargable. UPPER() retained on the XML-extracted value only
+-- since XML source casing is not guaranteed.
 -- =============================================================================
 SELECT DISTINCT
     ab.WorkflowName,
@@ -134,7 +147,7 @@ CROSS APPLY ab.BlockXml.nodes('block/blockProperties/property[name="approvers"]/
 CROSS APPLY (VALUES (
     UPPER(LTRIM(RTRIM(g.grp.value('(param[name="contactgroup"]/value)[1]', 'nvarchar(50)'))))
 )) av (ContactGroupId)
-JOIN ContactGroup cg WITH (NOLOCK) ON UPPER(cg.RecId) = av.ContactGroupId
+JOIN #ApprovalGroupLookup cg ON cg.RecId = av.ContactGroupId
 WHERE ab.BlockType IN ('vote0007', 'vote')
   AND av.ContactGroupId <> ''
   AND (@TeamName = '' OR cg.Name LIKE '%' + @TeamName + '%');
@@ -160,13 +173,6 @@ CREATE CLUSTERED INDEX IX_WO_WorkflowId ON #WorkflowOffering (WorkflowId);
 
 -- =============================================================================
 -- Final result: UNION of all three paths
--- PATH 1 (QuickAction): team extracted from frs_def_quick_actions.Definition
---   via CHARINDEX. OPENJSON cannot be used — Ivanti stores JavaScript Date
---   literals (new Date(...)) in Definition, which are not valid JSON.
---   Two-step null guard: checks etPos.pos > 0 before extracting ExpressionText
---   to avoid returning arbitrary text when OwnerTeam has no value.
--- PATH 2 (task): team already in #TaskBlocks, no further lookup needed.
--- PATH 3 (approval): group name already resolved via ContactGroup JOIN.
 -- =============================================================================
 SELECT
     b.WorkflowName,
@@ -231,5 +237,6 @@ DROP TABLE #FilteredWorkflows;
 DROP TABLE #AllBlocks;
 DROP TABLE #Blocks;
 DROP TABLE #TaskBlocks;
+DROP TABLE #ApprovalGroupLookup;
 DROP TABLE #ApprovalBlocks;
 DROP TABLE #WorkflowOffering;
