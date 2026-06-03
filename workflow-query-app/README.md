@@ -12,8 +12,8 @@ Searches across workflow definitions and returns matching blocks with their team
 | Version | Latest definition version |
 | Offering Status | Associated request offering status (Published, Design, No Offering) |
 | Block Title | Title of the matching block |
-| Block Type | `task`, `advancedtask`, or `update` |
-| Team Name | Team assigned to the block |
+| Block Type | `task`, `advancedtask`, `update`, `create`, `notification`, `quickaction`, `createnew0002`, `vote0007`, or `vote` |
+| Team / Group | Team assigned to the block, or approval group for `vote0007`/`vote` blocks (shown with a `group` tag) |
 
 All filters default to "all values" — leave any field blank to search across everything. When results are returned, **Copy to Clipboard** and **Export CSV** buttons appear in the results header. The clipboard copy uses tab-separated values so it pastes directly into Excel with columns aligned.
 
@@ -129,7 +129,7 @@ Use it to test filter changes, inspect raw results, or verify query behaviour be
 | Route | Method | Description |
 |---|---|---|
 | `/api/query` | POST | Run the workflow block query with filters |
-| `/api/teams` | GET | Fetch active service desk teams for the Team Name dropdown |
+| `/api/teams` | GET | Fetch service desk teams and approval groups for the Team / Group dropdown |
 | `/api/export/workflow-results.csv` | GET | Download results as a CSV file |
 
 ### POST `/api/query`
@@ -153,7 +153,7 @@ Use it to test filter changes, inspect raw results, or verify query behaviour be
       "DefVersion": "5",
       "RequestOfferingStatus": "Published",
       "BlockTitle": "...",
-      "BlockType": "task",
+      "BlockType": "task",   // or advancedtask, update, create, notification, quickaction, createnew0002, vote0007, vote
       "TeamName": "..."
     }
   ]

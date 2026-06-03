@@ -8,6 +8,7 @@ IF OBJECT_ID('tempdb..#FilteredWorkflows') IS NOT NULL DROP TABLE #FilteredWorkf
 IF OBJECT_ID('tempdb..#AllBlocks')         IS NOT NULL DROP TABLE #AllBlocks;
 IF OBJECT_ID('tempdb..#Blocks')            IS NOT NULL DROP TABLE #Blocks;
 IF OBJECT_ID('tempdb..#TaskBlocks')        IS NOT NULL DROP TABLE #TaskBlocks;
+IF OBJECT_ID('tempdb..#ApprovalBlocks')    IS NOT NULL DROP TABLE #ApprovalBlocks;
 IF OBJECT_ID('tempdb..#WorkflowOffering')  IS NOT NULL DROP TABLE #WorkflowOffering;
 
 ;WITH LatestVersions AS (
@@ -98,6 +99,32 @@ WHERE tv.TeamName <> ''
 
 CREATE CLUSTERED INDEX IX_TaskBlocks_RecID ON #TaskBlocks (WorkflowDefinitionRecID);
 
+-- PATH 3: vote0007 approval blocks
+-- Extracts the approver contact group from the approvers property and joins
+-- to ContactGroup to resolve the GUID to a group name. Only processes blocks
+-- where 'is' = 'From a Group' (static assignment); dynamic approvers
+-- (_unchecked, from field, from profile) produce no contactgroup GUID and
+-- are excluded by the JOIN.
+SELECT DISTINCT
+    ab.WorkflowName,
+    ab.WorkflowDefinitionRecID,
+    ab.DefVersion,
+    ab.BlockTitle,
+    ab.BlockType,
+    cg.Name AS TeamName
+INTO #ApprovalBlocks
+FROM #AllBlocks ab
+CROSS APPLY ab.BlockXml.nodes('block/blockProperties/property[name="approvers"]/groups/group') g(grp)
+CROSS APPLY (VALUES (
+    UPPER(LTRIM(RTRIM(g.grp.value('(param[name="contactgroup"]/value)[1]', 'nvarchar(50)'))))
+)) av (ContactGroupId)
+JOIN ContactGroup cg WITH (NOLOCK) ON UPPER(cg.RecId) = av.ContactGroupId
+WHERE ab.BlockType IN ('vote0007', 'vote')
+  AND av.ContactGroupId <> ''
+  AND (@TeamName = '' OR cg.Name LIKE '%' + @TeamName + '%');
+
+CREATE CLUSTERED INDEX IX_ApprovalBlocks_RecID ON #ApprovalBlocks (WorkflowDefinitionRecID);
+
 -- Materialise WorkflowOffering once; a CTE would re-execute the 3-table join
 -- for each UNION branch.
 SELECT DISTINCT
@@ -156,11 +183,25 @@ FROM #TaskBlocks tb
 LEFT JOIN #WorkflowOffering wo ON wo.WorkflowId = tb.WorkflowDefinitionRecID
 WHERE (@Status = '' OR ISNULL(wo.Status, 'No Offering') LIKE '%' + @Status + '%')
 
+UNION ALL
+
+SELECT
+    ab.WorkflowName,
+    ab.DefVersion,
+    ISNULL(wo.Status, 'No Offering') AS RequestOfferingStatus,
+    ab.BlockTitle,
+    ab.BlockType,
+    ab.TeamName
+FROM #ApprovalBlocks ab
+LEFT JOIN #WorkflowOffering wo ON wo.WorkflowId = ab.WorkflowDefinitionRecID
+WHERE (@Status = '' OR ISNULL(wo.Status, 'No Offering') LIKE '%' + @Status + '%')
+
 ORDER BY WorkflowName, BlockType, BlockTitle;
 
 DROP TABLE #FilteredWorkflows;
 DROP TABLE #AllBlocks;
 DROP TABLE #Blocks;
 DROP TABLE #TaskBlocks;
+DROP TABLE #ApprovalBlocks;
 DROP TABLE #WorkflowOffering;
 `;

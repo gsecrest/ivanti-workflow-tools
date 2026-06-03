@@ -11,7 +11,7 @@ type Row = {
   TeamName: string;
 };
 
-const BLOCK_TYPES = ["", "task", "advancedtask", "update"];
+const BLOCK_TYPES = ["", "task", "advancedtask", "update", "create", "notification", "quickaction", "createnew0002", "vote0007", "vote"];
 const STATUSES = ["", "Published", "Design"];
 
 export default function Home() {
@@ -20,6 +20,7 @@ export default function Home() {
   const [teamName, setTeamName] = useState("");
   const [status, setStatus] = useState("");
   const [teams, setTeams] = useState<string[]>([]);
+  const [approvalGroups, setApprovalGroups] = useState<string[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(true);
 
   useEffect(() => {
@@ -27,6 +28,7 @@ export default function Home() {
       .then((r) => r.json())
       .then((data) => {
         if (data.teams) setTeams(data.teams);
+        if (data.approvalGroups) setApprovalGroups(data.approvalGroups);
       })
       .finally(() => setTeamsLoading(false));
   }, []);
@@ -135,7 +137,7 @@ export default function Home() {
 
             <div>
               <label className="block text-xs font-semibold text-gray-800 uppercase tracking-wide mb-1">
-                Team Name
+                Team / Group
               </label>
               <select
                 value={teamName}
@@ -144,9 +146,20 @@ export default function Home() {
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:text-gray-400"
               >
                 <option value="">All teams</option>
-                {teams.map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
+                {teams.length > 0 && (
+                  <optgroup label="Service Desk Teams">
+                    {teams.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {approvalGroups.length > 0 && (
+                  <optgroup label="Approval Groups">
+                    {approvalGroups.map((g) => (
+                      <option key={g} value={g}>{g}</option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             </div>
 
@@ -232,7 +245,7 @@ export default function Home() {
                       <th className="px-4 py-3 text-left font-semibold">Offering Status</th>
                       <th className="px-4 py-3 text-left font-semibold">Block Title</th>
                       <th className="px-4 py-3 text-left font-semibold">Block Type</th>
-                      <th className="px-4 py-3 text-left font-semibold">Team Name</th>
+                      <th className="px-4 py-3 text-left font-semibold">Team / Group</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -247,7 +260,12 @@ export default function Home() {
                         <td className="px-4 py-3">
                           <BlockTypeBadge type={row.BlockType} />
                         </td>
-                        <td className="px-4 py-3 text-gray-900">{row.TeamName}</td>
+                        <td className="px-4 py-3 text-gray-900">
+                          {row.TeamName}
+                          {(row.BlockType === "vote0007" || row.BlockType === "vote") && (
+                            <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-400">group</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -273,6 +291,16 @@ function BlockTypeBadge({ type }: { type: string }) {
       ? "bg-purple-100 text-purple-700"
       : type === "update"
       ? "bg-orange-100 text-orange-700"
+      : type === "create"
+      ? "bg-teal-100 text-teal-700"
+      : type === "notification"
+      ? "bg-yellow-100 text-yellow-700"
+      : type === "quickaction"
+      ? "bg-indigo-100 text-indigo-700"
+      : type === "createnew0002"
+      ? "bg-pink-100 text-pink-700"
+      : type === "vote0007" || type === "vote"
+      ? "bg-green-100 text-green-700"
       : "bg-gray-100 text-gray-500";
   return (
     <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${color}`}>

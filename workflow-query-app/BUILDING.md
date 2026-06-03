@@ -225,7 +225,7 @@ DECLARE @WorkflowName NVARCHAR(255) = @wf;
 
 ## Step 9: Build the teams API route
 
-Create `app/api/teams/route.ts`. This endpoint returns all active service desk teams for the dropdown.
+Create `app/api/teams/route.ts`. This endpoint returns service desk teams and approval groups for the Team / Group dropdown, running both queries in parallel.
 
 ```ts
 import { NextResponse } from "next/server";
@@ -234,17 +234,29 @@ import { pool, poolConnect } from "@/lib/db";
 export async function GET() {
   try {
     await poolConnect;
-    const result = await pool.request().query(`
-      SELECT DISTINCT Team
-      FROM StandardUserTeam WITH (NOLOCK)
-      WHERE ISNULL(WC_Inactive, 0) = 0
-        AND IsServiceDesk = 1
-        AND Team IS NOT NULL
-        AND Team <> ''
-      ORDER BY Team
-    `);
-    const teams = result.recordset.map((r: { Team: string }) => r.Team);
-    return NextResponse.json({ teams });
+
+    const [teamsResult, groupsResult] = await Promise.all([
+      pool.request().query(`
+        SELECT DISTINCT Team
+        FROM StandardUserTeam WITH (NOLOCK)
+        WHERE ISNULL(WC_Inactive, 0) = 0
+          AND IsServiceDesk = 1
+          AND Team IS NOT NULL AND Team <> ''
+        ORDER BY Team
+      `),
+      pool.request().query(`
+        SELECT DISTINCT Name
+        FROM ContactGroup WITH (NOLOCK)
+        WHERE Status = 'Active'
+          AND GroupType = 'Service Request Approval'
+          AND Name IS NOT NULL AND Name <> ''
+        ORDER BY Name
+      `),
+    ]);
+
+    const teams          = teamsResult.recordset.map((r: { Team: string }) => r.Team);
+    const approvalGroups = groupsResult.recordset.map((r: { Name: string }) => r.Name);
+    return NextResponse.json({ teams, approvalGroups });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });
@@ -253,9 +265,9 @@ export async function GET() {
 ```
 
 **Key points:**
-- `await poolConnect` ensures the shared pool is connected before the first query. After that it resolves instantly on subsequent requests.
-- DB config and credentials are centralised in `lib/db.ts` — no config duplication across routes.
-- `trustServerCertificate: true` (set in `lib/db.ts`) is needed for self-signed certs common in internal SQL Server instances.
+- Both queries run in parallel via `Promise.all` — no sequential wait.
+- `teams` comes from `StandardUserTeam` (active service desk teams); `approvalGroups` comes from `ContactGroup` filtered to `GroupType = 'Service Request Approval'`.
+- The UI renders them in separate `<optgroup>` sections — "Service Desk Teams" and "Approval Groups" — so users can filter `vote0007`/`vote` blocks by their approval group.
 
 ---
 
@@ -302,14 +314,16 @@ The query has five stages:
 |---|---|
 | `#FilteredWorkflows` | Gets the latest version of each `*form` workflow, parses the XML definition |
 | `#AllBlocks` | Shreds all blocks from the XML in a single pass; applies block type filter |
-| `#Blocks` | Extracts QuickAction-based blocks (`advancedtask`, `update`) via QAID |
+| `#Blocks` | Extracts QuickAction-based blocks (`advancedtask`, `update`, `create`, `notification`, `quickaction`, `createnew0002`) via QAID |
 | `#TaskBlocks` | Extracts task blocks via the `teamblock` property |
+| `#ApprovalBlocks` | Extracts approval blocks (`vote0007`, `vote`) via `contactgroup` GUID, joined to `ContactGroup` for the name |
 | `#WorkflowOffering` | Joins workflow IDs to their request offering status |
 
-The final `SELECT` UNIONs two branches, both joined to `#WorkflowOffering` for the status column:
+The final `SELECT` UNIONs three branches, all joined to `#WorkflowOffering` for the status column:
 
 - **`#Blocks` branch** — joins to `frs_def_quick_actions` and uses `CHARINDEX` string scanning to extract the team name from the `Definition` column: it finds `"FieldName":"OwnerTeam"` then searches forward for `"ExpressionText":"` to read the value. `OPENJSON` cannot be used here because Ivanti stores JavaScript Date literals (`new Date(...)`) in the column, which are not valid JSON.
 - **`#TaskBlocks` branch** — team name was already extracted from XML in the `#TaskBlocks` stage, so no further lookup is needed.
+- **`#ApprovalBlocks` branch** — approval group name was resolved via `ContactGroup` JOIN in the `#ApprovalBlocks` stage, so no further lookup is needed.
 
 ---
 
@@ -341,7 +355,7 @@ export async function GET(req: NextRequest) {
       .query(workflowQuery);
 
     const escape = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const headers = ["Workflow Name", "Version", "Offering Status", "Block Title", "Block Type", "Team Name"];
+    const headers = ["Workflow Name", "Version", "Offering Status", "Block Title", "Block Type", "Team / Group"];
     const lines = [
       headers.map(escape).join(","),
       ...result.recordset.map((r) =>
@@ -485,7 +499,7 @@ The results section only renders when `hasQueried && !error`. The "No results fo
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The Team Name dropdown should populate immediately. Click **Run Query** with all filters blank to confirm the database connection works.
+Open [http://localhost:3000](http://localhost:3000). The Team / Group dropdown should populate immediately with two groups — Service Desk Teams and Approval Groups. Click **Run Query** with all filters blank to confirm the database connection works.
 
 **Common issues:**
 
@@ -513,7 +527,7 @@ workflow-query-app/
 │   ├── globals.css                  ← Tailwind v4 + CSS variables
 │   ├── page.tsx                     ← Filter UI + results table
 │   └── api/
-│       ├── teams/route.ts           ← GET active service desk teams
+│       ├── teams/route.ts           ← GET service desk teams + approval groups
 │       ├── query/route.ts           ← POST workflow block search
 │       └── export/
 │           └── workflow-results.csv/
