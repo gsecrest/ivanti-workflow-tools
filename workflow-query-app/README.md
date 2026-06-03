@@ -10,7 +10,7 @@ Searches across workflow definitions and returns matching blocks with their team
 |---|---|
 | Workflow Name | Name of the workflow |
 | Version | Latest definition version |
-| Offering Status | Associated request offering status (Published, Design, No Offering) |
+| Offering Status | Status of the associated request offering: `Published` or `Design`. Only workflows linked to a request offering are returned — unlinked workflows are excluded from results. |
 | Block Title | Title of the matching block |
 | Block Type | `task`, `advancedtask`, `update`, `create`, `notification`, `quickaction`, `createnew0002`, `vote0007`, or `vote` |
 | Team / Group | Team assigned to the block, or approval group for `vote0007`/`vote` blocks (shown with a `group` tag) |

@@ -188,7 +188,8 @@ WHERE tn.TeamName IS NOT NULL
   AND tn.TeamName <> ''
   AND tn.TeamName NOT LIKE '$(%'
   AND (@TeamName = '' OR tn.TeamName LIKE '%' + @TeamName + '%')
-  AND (@Status   = '' OR ISNULL(wo.Status, 'No Offering') LIKE '%' + @Status + '%')
+  AND wo.Status IS NOT NULL
+  AND (@Status = '' OR wo.Status LIKE '%' + @Status + '%')
 
 UNION ALL
 
