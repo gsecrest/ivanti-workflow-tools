@@ -300,7 +300,7 @@ body(
 heading('12.1 Filters', level=2)
 bullet('Workflow Name: Partial-match text input.')
 bullet('Block Type: Dropdown with all 9 supported block types.')
-bullet('Team / Group: Dropdown with two sections — "Service Desk Teams" (from StandardUserTeam) and "Approval Groups" (from ContactGroup where GroupType = \'Service Request Approval\').')
+bullet('Team / Group: Searchable combobox — type to filter the list instantly, or click the chevron to browse all options. Shows "Service Desk Teams" (from StandardUserTeam) and "Approval Groups" (from ContactGroup where GroupType = \'Service Request Approval\') in separate sections. A ✕ button clears the selection.')
 bullet('Status: Dropdown — All statuses, Published, Design.')
 
 heading('12.2 Results Table', level=2)
