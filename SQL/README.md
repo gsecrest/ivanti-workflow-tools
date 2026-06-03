@@ -6,18 +6,26 @@ SQL scripts for auditing Ivanti ITSM (Neurons) workflow definitions. All scripts
 
 ## Primary Script
 
-### FindTeamByBlockTypeAndWorkflow_v7.sql *(recommended)*
+### FindTeamByBlockTypeAndWorkflow_v8.sql *(recommended)*
 
-The main audit query. Returns all workflow blocks and their assigned teams, with filtering by workflow name, block type, team, and offering status.
+The main audit query. Returns workflow blocks and their assigned teams or approval groups, with filtering by workflow name, block type, team/group, and offering status.
 
 **Parameters** — edit the four `DECLARE` statements at the top:
 
 ```sql
 DECLARE @WorkflowName NVARCHAR(255) = '';   -- blank = all workflows
 DECLARE @BlockType    NVARCHAR(50)  = '';   -- blank = all block types
-DECLARE @TeamName     NVARCHAR(255) = '';   -- blank = all teams
+DECLARE @TeamName     NVARCHAR(255) = '';   -- blank = all teams and groups
 DECLARE @Status       NVARCHAR(50)  = '';   -- blank = all statuses
 ```
+
+**Supported block types:**
+
+| Block Type | Team source |
+|---|---|
+| `task` | `teamblock` property in workflow XML |
+| `advancedtask`, `update`, `create`, `notification`, `quickaction`, `createnew0002` | `OwnerTeam` in `frs_def_quick_actions.Definition` via CHARINDEX |
+| `vote0007`, `vote` | `contactgroup` GUID in workflow XML → joined to `ContactGroup.Name` |
 
 **Output:**
 
@@ -30,7 +38,7 @@ DECLARE @Status       NVARCHAR(50)  = '';   -- blank = all statuses
 | BlockType | `task`, `advancedtask`, or `update` |
 | TeamName | Team assigned to the block |
 
-Full technical documentation: [FindTeamByBlockTypeAndWorkflow_v7_Documentation.docx](FindTeamByBlockTypeAndWorkflow_v7_Documentation.docx)
+Full technical documentation: [FindTeamByBlockTypeAndWorkflow_v8_Documentation.docx](FindTeamByBlockTypeAndWorkflow_v8_Documentation.docx)
 
 ---
 
@@ -44,12 +52,14 @@ Full technical documentation: [FindTeamByBlockTypeAndWorkflow_v7_Documentation.d
 | `FindTeamByBlockTypeAndWorkflow_v4.sql` | v4 — see v4 documentation |
 | `FindTeamByBlockTypeAndWorkflow_v5.sql` | v5 — performance-optimised rewrite; same output as v4 |
 | `FindTeamByBlockTypeAndWorkflow_v6.sql` | v6 — single XML shred pass (#AllBlocks); WorkflowOffering materialised as temp table |
-| `FindTeamByBlockTypeAndWorkflow_v7.sql` | v7 — NOLOCK hints, DISTINCT fix on #AllBlocks, improved CHARINDEX null guard *(current)* |
+| `FindTeamByBlockTypeAndWorkflow_v7.sql` | v7 — NOLOCK hints, DISTINCT fix on #AllBlocks, improved CHARINDEX null guard |
+| `FindTeamByBlockTypeAndWorkflow_v8.sql` | v8 — PATH 3 for vote0007/vote approval blocks via ContactGroup; expand QuickAction path to cover create, notification, quickaction, createnew0002 *(current)* |
 
-Documentation is available for v4, v5, and v7:
+Documentation is available for v4, v5, v7, and v8:
 - [FindTeamByBlockTypeAndWorkflow_v4_Documentation.docx](FindTeamByBlockTypeAndWorkflow_v4_Documentation.docx)
 - [FindTeamByBlockTypeAndWorkflow_v5_Documentation.docx](FindTeamByBlockTypeAndWorkflow_v5_Documentation.docx)
 - [FindTeamByBlockTypeAndWorkflow_v7_Documentation.docx](FindTeamByBlockTypeAndWorkflow_v7_Documentation.docx)
+- [FindTeamByBlockTypeAndWorkflow_v8_Documentation.docx](FindTeamByBlockTypeAndWorkflow_v8_Documentation.docx)
 
 ---
 
@@ -104,6 +114,7 @@ Documentation is available for v4, v5, and v7:
 | `generate_doc.py` | Python script that generated the v4 Word documentation |
 | `generate_doc_v5.py` | Python script that generated the v5 Word documentation |
 | `generate_doc_v7.py` | Python script that generated the v7 Word documentation |
+| `generate_doc_v8.py` | Python script that generated the v8 Word documentation |
 
 ---
 
@@ -118,6 +129,7 @@ Documentation is available for v4, v5, and v7:
 | `FusionLink` | Relationship table linking fulfillment plans to request templates |
 | `ServiceReqTemplate` | Request offering metadata including status |
 | `StandardUserTeam` | Active service desk teams |
+| `ContactGroup` | Contact groups including approval groups (`GroupType = 'Service Request Approval'`) |
 
 ---
 
