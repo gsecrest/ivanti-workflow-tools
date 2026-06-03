@@ -4,27 +4,36 @@ DECLARE @BlockType    NVARCHAR(50)  = @bt;
 DECLARE @TeamName     NVARCHAR(255) = @tn;
 DECLARE @Status       NVARCHAR(50)  = @st;
 
-IF OBJECT_ID('tempdb..#FilteredWorkflows') IS NOT NULL DROP TABLE #FilteredWorkflows;
-IF OBJECT_ID('tempdb..#AllBlocks')         IS NOT NULL DROP TABLE #AllBlocks;
-IF OBJECT_ID('tempdb..#Blocks')            IS NOT NULL DROP TABLE #Blocks;
-IF OBJECT_ID('tempdb..#TaskBlocks')        IS NOT NULL DROP TABLE #TaskBlocks;
-IF OBJECT_ID('tempdb..#ApprovalBlocks')    IS NOT NULL DROP TABLE #ApprovalBlocks;
-IF OBJECT_ID('tempdb..#WorkflowOffering')  IS NOT NULL DROP TABLE #WorkflowOffering;
+IF OBJECT_ID('tempdb..#FilteredWorkflows')   IS NOT NULL DROP TABLE #FilteredWorkflows;
+IF OBJECT_ID('tempdb..#AllBlocks')           IS NOT NULL DROP TABLE #AllBlocks;
+IF OBJECT_ID('tempdb..#Blocks')              IS NOT NULL DROP TABLE #Blocks;
+IF OBJECT_ID('tempdb..#TaskBlocks')          IS NOT NULL DROP TABLE #TaskBlocks;
+IF OBJECT_ID('tempdb..#ApprovalGroupLookup') IS NOT NULL DROP TABLE #ApprovalGroupLookup;
+IF OBJECT_ID('tempdb..#ApprovalBlocks')      IS NOT NULL DROP TABLE #ApprovalBlocks;
+IF OBJECT_ID('tempdb..#WorkflowOffering')    IS NOT NULL DROP TABLE #WorkflowOffering;
 
+-- OPT 2: Filter pushed into the CTE so ROW_NUMBER() only runs over *form
+-- workflows that match the name filter, not the entire definition table.
 ;WITH LatestVersions AS (
     SELECT
-        RecID,
-        WorkflowTypeLink_RecID,
-        DefVersion,
-        Details,
+        wf.RecID,
+        wf.WorkflowTypeLink_RecID,
+        wf.DefVersion,
+        wf.Details,
+        wt.Name AS WorkflowName,
         ROW_NUMBER() OVER (
-            PARTITION BY WorkflowTypeLink_RecID
-            ORDER BY CAST(DefVersion AS INT) DESC
+            PARTITION BY wf.WorkflowTypeLink_RecID
+            ORDER BY CAST(wf.DefVersion AS INT) DESC
         ) AS rn
-    FROM frs_def_workflow_definition WITH (NOLOCK)
+    FROM frs_def_workflow_definition wf WITH (NOLOCK)
+    JOIN frs_def_workflow_type wt WITH (NOLOCK)
+        ON wf.WorkflowTypeLink_RecID = wt.RecID
+    WHERE wt.Name LIKE '%form'
+      AND wt.Name NOT LIKE '%backup%'
+      AND (@WorkflowName = '' OR wt.Name LIKE '%' + @WorkflowName + '%')
 )
 SELECT
-    wt.Name                    AS WorkflowName,
+    lv.WorkflowName,
     UPPER(lv.RecID)            AS WorkflowDefinitionRecID,
     lv.DefVersion,
     CAST(
@@ -34,11 +43,7 @@ SELECT
     AS XML) AS XmlData
 INTO #FilteredWorkflows
 FROM LatestVersions lv
-JOIN frs_def_workflow_type wt WITH (NOLOCK) ON lv.WorkflowTypeLink_RecID = wt.RecID
-WHERE lv.rn = 1
-  AND wt.Name LIKE '%form'
-  AND wt.Name NOT LIKE '%backup%'
-  AND (@WorkflowName = '' OR wt.Name LIKE '%' + @WorkflowName + '%');
+WHERE lv.rn = 1;
 
 CREATE CLUSTERED INDEX IX_FW_RecID ON #FilteredWorkflows (WorkflowDefinitionRecID);
 
@@ -57,9 +62,11 @@ FROM #FilteredWorkflows fw
 CROSS APPLY fw.XmlData.nodes('/scenario/blocks/block') b(block)
 WHERE (@BlockType = '' OR LTRIM(RTRIM(b.block.value('(type)[1]', 'nvarchar(50)'))) = @BlockType);
 
-CREATE CLUSTERED INDEX IX_AB_RecID ON #AllBlocks (WorkflowDefinitionRecID);
+CREATE CLUSTERED INDEX IX_AB_RecID    ON #AllBlocks (WorkflowDefinitionRecID);
+-- OPT 1: Non-clustered index on BlockType speeds up PATH 3 filter.
+CREATE NONCLUSTERED INDEX IX_AB_BlockType ON #AllBlocks (BlockType);
 
--- PATH 1: QuickAction-based blocks (advancedtask, update)
+-- PATH 1: QuickAction-based blocks (advancedtask, update, create, notification, quickaction, createnew0002)
 -- QAID stored as uniqueidentifier so the JOIN to frs_def_quick_actions.Id is
 -- type-matched and sargable.
 SELECT DISTINCT
@@ -75,7 +82,10 @@ INTO #Blocks
 FROM #AllBlocks ab
 CROSS APPLY ab.BlockXml.nodes('block/blockProperties/property[name="QuickAction"]') q(qaprop);
 
-CREATE CLUSTERED INDEX IX_Blocks_QAID ON #Blocks (QAID);
+CREATE CLUSTERED INDEX IX_Blocks_QAID  ON #Blocks (QAID);
+-- OPT 5: Non-clustered index on WorkflowDefinitionRecID speeds up the final
+-- LEFT JOIN to #WorkflowOffering.
+CREATE NONCLUSTERED INDEX IX_Blocks_RecID ON #Blocks (WorkflowDefinitionRecID);
 
 -- PATH 2: Task blocks (teamblock property)
 -- CROSS APPLY (VALUES) computes TeamName once instead of evaluating the same
@@ -99,12 +109,22 @@ WHERE tv.TeamName <> ''
 
 CREATE CLUSTERED INDEX IX_TaskBlocks_RecID ON #TaskBlocks (WorkflowDefinitionRecID);
 
--- PATH 3: vote0007 approval blocks
--- Extracts the approver contact group from the approvers property and joins
--- to ContactGroup to resolve the GUID to a group name. Only processes blocks
--- where 'is' = 'From a Group' (static assignment); dynamic approvers
--- (_unchecked, from field, from profile) produce no contactgroup GUID and
--- are excluded by the JOIN.
+-- OPT 4: Pre-materialise only the relevant ContactGroup rows (Service Request
+-- Approval groups) so PATH 3 joins a small indexed temp table instead of the
+-- full ContactGroup table.
+SELECT RecId, Name
+INTO #ApprovalGroupLookup
+FROM ContactGroup WITH (NOLOCK)
+WHERE Status = 'Active'
+  AND GroupType = 'Service Request Approval';
+
+CREATE CLUSTERED INDEX IX_AGL_RecId ON #ApprovalGroupLookup (RecId);
+
+-- PATH 3: Approval blocks (vote0007, vote)
+-- Extracts the approver contact group GUID and joins to #ApprovalGroupLookup.
+-- OPT 3: UPPER() removed from the JOIN column — on a CI collation the index
+-- on RecId is now sargable. UPPER() is kept on the XML-extracted value only
+-- since XML source casing is not guaranteed.
 SELECT DISTINCT
     ab.WorkflowName,
     ab.WorkflowDefinitionRecID,
@@ -118,7 +138,7 @@ CROSS APPLY ab.BlockXml.nodes('block/blockProperties/property[name="approvers"]/
 CROSS APPLY (VALUES (
     UPPER(LTRIM(RTRIM(g.grp.value('(param[name="contactgroup"]/value)[1]', 'nvarchar(50)'))))
 )) av (ContactGroupId)
-JOIN ContactGroup cg WITH (NOLOCK) ON UPPER(cg.RecId) = av.ContactGroupId
+JOIN #ApprovalGroupLookup cg ON cg.RecId = av.ContactGroupId
 WHERE ab.BlockType IN ('vote0007', 'vote')
   AND av.ContactGroupId <> ''
   AND (@TeamName = '' OR cg.Name LIKE '%' + @TeamName + '%');
@@ -202,6 +222,7 @@ DROP TABLE #FilteredWorkflows;
 DROP TABLE #AllBlocks;
 DROP TABLE #Blocks;
 DROP TABLE #TaskBlocks;
+DROP TABLE #ApprovalGroupLookup;
 DROP TABLE #ApprovalBlocks;
 DROP TABLE #WorkflowOffering;
 `;
