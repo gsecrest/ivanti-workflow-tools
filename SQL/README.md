@@ -33,7 +33,7 @@ DECLARE @Status       NVARCHAR(50)  = '';   -- blank = all statuses
 |---|---|
 | WorkflowName | Workflow name |
 | DefVersion | Latest version number |
-| RequestOfferingStatus | Offering status, or `No Offering` if unlinked |
+| RequestOfferingStatus | Offering status (`Published` or `Design`). Workflows not linked to a request offering are excluded from results. |
 | BlockTitle | Block display title |
 | BlockType | `task`, `advancedtask`, or `update` |
 | TeamName | Team assigned to the block |

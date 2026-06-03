@@ -272,7 +272,7 @@ add_table(
     [
         ['WorkflowName',          'Name of the workflow'],
         ['DefVersion',            'Version number of the workflow definition'],
-        ['RequestOfferingStatus', 'Status of the associated request offering, or "No Offering" if unlinked'],
+        ['RequestOfferingStatus', 'Status of the associated request offering (Published or Design). Workflows not linked to a request offering are excluded from results.'],
         ['BlockTitle',            'Display title of the block within the workflow'],
         ['BlockType',             'Type of block (see Supported Block Types)'],
         ['TeamName',              'Team assigned to the block, or approval group name for vote0007/vote blocks'],
@@ -337,7 +337,7 @@ heading('12.1 Filters', level=2)
 bullet('Workflow Name: Partial-match text input.')
 bullet('Block Type: Dropdown with all 9 supported block types.')
 bullet('Team / Group: Searchable combobox — type to filter the list instantly, or click the chevron to browse all options. Shows "Service Desk Teams" (from StandardUserTeam) and "Approval Groups" (from ContactGroup where GroupType = \'Service Request Approval\') in separate sections. A ✕ button clears the selection.')
-bullet('Status: Dropdown — All statuses, Published, Design.')
+bullet('Status: Dropdown — All statuses (Published + Design), Published only, Design only. Workflows not linked to a request offering are always excluded.')
 
 heading('12.2 Results Table', level=2)
 body(
