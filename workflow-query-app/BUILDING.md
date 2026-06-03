@@ -267,7 +267,7 @@ export async function GET() {
 **Key points:**
 - Both queries run in parallel via `Promise.all` — no sequential wait.
 - `teams` comes from `StandardUserTeam` (active service desk teams); `approvalGroups` comes from `ContactGroup` filtered to `GroupType = 'Service Request Approval'`.
-- The UI renders them in separate `<optgroup>` sections — "Service Desk Teams" and "Approval Groups" — so users can filter `vote0007`/`vote` blocks by their approval group.
+- The UI renders them in a searchable `TeamCombobox` component — type to filter the list, or click the chevron to browse all options. Options are grouped under "Service Desk Teams" and "Approval Groups" headings. A ✕ button clears the selection.
 
 ---
 
@@ -391,21 +391,22 @@ Replace `app/page.tsx` with the filter form and results table. The component is 
 ### State
 
 ```tsx
-const [workflowName, setWorkflowName] = useState("");
-const [blockType, setBlockType]       = useState("");
-const [teamName, setTeamName]         = useState("");
-const [status, setStatus]             = useState("");
-const [teams, setTeams]               = useState<string[]>([]);
-const [rows, setRows]                 = useState<Row[]>([]);
-const [loading, setLoading]           = useState(false);
-const [hasQueried, setHasQueried]     = useState(false);
-const [error, setError]               = useState("");
-const [copied, setCopied]             = useState(false);
+const [workflowName, setWorkflowName]     = useState("");
+const [blockType, setBlockType]           = useState("");
+const [teamName, setTeamName]             = useState("");
+const [status, setStatus]                 = useState("");
+const [teams, setTeams]                   = useState<string[]>([]);
+const [approvalGroups, setApprovalGroups] = useState<string[]>([]);
+const [rows, setRows]                     = useState<Row[]>([]);
+const [loading, setLoading]               = useState(false);
+const [hasQueried, setHasQueried]         = useState(false);
+const [error, setError]                   = useState("");
+const [copied, setCopied]                 = useState(false);
 ```
 
 - All filters default to `""` (empty string), which the API treats as "match all".
 - `hasQueried` prevents showing the results panel before the first query runs.
-- `teams` is populated on mount by calling `/api/teams`.
+- `teams` and `approvalGroups` are both populated on mount by calling `/api/teams`.
 
 ### Fetching teams on mount
 
@@ -413,7 +414,10 @@ const [copied, setCopied]             = useState(false);
 useEffect(() => {
   fetch("/api/teams")
     .then((r) => r.json())
-    .then((data) => { if (data.teams) setTeams(data.teams); })
+    .then((data) => {
+      if (data.teams) setTeams(data.teams);
+      if (data.approvalGroups) setApprovalGroups(data.approvalGroups);
+    })
     .finally(() => setTeamsLoading(false));
 }, []);
 ```
@@ -467,7 +471,7 @@ The **Copy to Clipboard** button copies results as tab-separated values (TSV), w
 const [copied, setCopied] = useState(false);
 
 function copyToClipboard() {
-  const headers = ["Workflow Name", "Version", "Offering Status", "Block Title", "Block Type", "Team Name"];
+  const headers = ["Workflow Name", "Version", "Offering Status", "Block Title", "Block Type", "Team / Group"];
   const lines = [
     headers.join("\t"),
     ...rows.map((r) =>
@@ -499,7 +503,7 @@ The results section only renders when `hasQueried && !error`. The "No results fo
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The Team / Group dropdown should populate immediately with two groups — Service Desk Teams and Approval Groups. Click **Run Query** with all filters blank to confirm the database connection works.
+Open [http://localhost:3000](http://localhost:3000). Click the Team / Group field — it should show a searchable combobox with "Service Desk Teams" and "Approval Groups" sections. Click **Run Query** with all filters blank to confirm the database connection works.
 
 **Common issues:**
 

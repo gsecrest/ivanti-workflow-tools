@@ -117,7 +117,7 @@ Then delete the app folder from your machine. The `.env.local` file (with your D
 A standalone version of the workflow query is kept at:
 
 ```
-~/Downloads/Claude/SQL/FindTeamByBlockTypeAndWorkflow_v7.sql
+~/Downloads/Claude/SQL/FindTeamByBlockTypeAndWorkflow_v8.sql
 ```
 
 This is the same logic as the app but written to run directly in SSMS. Parameters are declared at the top with hardcoded defaults — set them before running. Connection pool reuse is an app-layer concern and does not apply in SSMS; each execution is its own session.
